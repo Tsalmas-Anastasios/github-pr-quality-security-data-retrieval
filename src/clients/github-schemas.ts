@@ -1,8 +1,14 @@
 import { z } from 'zod';
+import { githubOwnerSchema } from '../utils/github.js';
 
 const optionalCount = z.number().int().nonnegative().nullish();
 const timestamp = z.iso.datetime({ offset: true });
 const optionalText = z.string().nullable().default(null);
+
+export const githubOwnerResponseSchema = z.object({
+    login: githubOwnerSchema,
+    type: z.enum(['User', 'Organization']),
+});
 
 export const pullRequestSchema = z.object({
     id: z.number().int(),
@@ -38,6 +44,7 @@ export const repositorySchema = z.object({
     language: optionalText,
     default_branch: optionalText,
     private: z.boolean(),
+    visibility: z.enum(['public', 'private', 'internal']).optional(),
     fork: z.boolean(),
     archived: z.boolean().nullish(),
     disabled: z.boolean().nullish(),
@@ -104,6 +111,7 @@ export const rateLimitSchema = z.object({
 
 export type PullRequest = z.infer<typeof pullRequestSchema>;
 export type GitHubRepository = z.infer<typeof repositorySchema>;
+export type GitHubOwner = z.infer<typeof githubOwnerResponseSchema>;
 export type GitHubLabel = z.infer<typeof labelSchema>;
 export type PullRequestFile = z.infer<typeof pullRequestFileSchema>;
 export type PullRequestCommit = z.infer<typeof pullRequestCommitSchema>;

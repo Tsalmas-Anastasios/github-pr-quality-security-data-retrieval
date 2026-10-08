@@ -2,7 +2,8 @@ import { z } from 'zod';
 
 export const githubOwnerSchema = z
     .string()
-    .regex(/^[a-zA-Z0-9][a-zA-Z0-9-]*$/, 'Expected a GitHub user or organization name');
+    .max(39)
+    .regex(/^[a-zA-Z0-9]+(?:-[a-zA-Z0-9]+)*$/, 'Expected a GitHub user or organization name');
 export const githubRepositorySchema = z
     .string()
     .regex(/^[a-zA-Z0-9][a-zA-Z0-9-]*\/[a-zA-Z0-9_.-]+$/, 'Expected owner/repo')

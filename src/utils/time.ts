@@ -1,4 +1,4 @@
-import { setTimeout as delay } from 'node:timers/promises';
+import timers from 'node:timers/promises';
 
 const maximumTimerMs = 2_147_483_647;
 
@@ -28,7 +28,7 @@ export async function sleep(milliseconds: number, signal?: AbortSignal): Promise
     validateDuration(milliseconds, 0);
     signal?.throwIfAborted();
     try {
-        await delay(milliseconds, undefined, { signal });
+        await timers.setTimeout(milliseconds, undefined, { signal });
     } catch (error) {
         signal?.throwIfAborted();
         throw error;
