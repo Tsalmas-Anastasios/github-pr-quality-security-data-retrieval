@@ -53,6 +53,8 @@ Name: `github:repositories`. Input:
 
 Output includes owner, name, full name, browser URL, description, language, default branch, visibility and archive flags, stars, forks, issue count, and timestamps. You can use `full_name` values as inputs to the PR job.
 
+Each unique repository prints a JSON progress message through `console.log` after its metadata is fetched, including a timestamp, full repository name, and completed count.
+
 ```sh
 npm run job -- github:repositories --config examples/github-repositories.json --format csv
 ```
@@ -70,6 +72,8 @@ Name: `github:repositories-pr-counts`. Input:
 `owners` accepts any number of user and organization names, including an empty list. Owner types are detected automatically. This job collects all available pages with 100 repositories per page and does not accept `maxItems`, `perPage`, or `ownerType`. Owners are deduplicated case-insensitively and repositories by GitHub ID. It includes accessible private repositories owned by the authenticated account and visible organization repositories.
 
 The output columns are `repository_name`, `username`, `full_name`, `total_pull_requests`, `visibility`, `default_branch`, `archived`, and `disabled`. Counts include open, closed, and merged PRs. Records sort by count descending, with unresolved counts last. Failed counts remain `null` in JSON/JSONL or empty in CSV; failures are logged without discarding successful records. CSV has a UTF-8 BOM and preserves exact names.
+
+Console progress prints one JSON line for each unique repository discovered and another when its PR-count processing finishes. Completion messages include the repository name, completed and total counts, PR count, success or unresolved status, and duration in milliseconds. These messages use `console.log` on stdout; the project logger continues to report errors and summaries on stderr.
 
 ```sh
 npm run job -- github:repositories-pr-counts \

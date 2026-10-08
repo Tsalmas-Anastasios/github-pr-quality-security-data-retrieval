@@ -43,6 +43,15 @@ export const githubRepositoriesJob = defineJob({
                 const key = repository.full_name.toLowerCase();
                 if (seen.has(key)) continue;
                 seen.add(key);
+                console.log(
+                    JSON.stringify({
+                        time: new Date().toISOString(),
+                        job: 'github:repositories',
+                        message: 'Repository metadata fetched',
+                        repository: repository.full_name,
+                        completed: seen.size,
+                    })
+                );
                 yield {
                     owner: repository.owner.login,
                     name: repository.name,

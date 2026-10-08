@@ -83,7 +83,19 @@ async function discoverRepositories(
             try {
                 for await (const repository of source) {
                     if (repository.owner.login.toLowerCase() === owner.login.toLowerCase()) {
+                        const newlyDiscovered = !repositories.has(repository.id);
                         repositories.set(repository.id, repository);
+                        if (newlyDiscovered) {
+                            console.log(
+                                JSON.stringify({
+                                    time: new Date().toISOString(),
+                                    job: 'github:repositories-pr-counts',
+                                    message: 'Repository metadata fetched',
+                                    repository: repository.full_name,
+                                    discovered: repositories.size,
+                                })
+                            );
+                        }
                     }
                 }
             } catch (error) {
@@ -142,6 +154,7 @@ async function countPullRequests(
             context.signal?.throwIfAborted();
             const repository = repositories[nextIndex++];
             if (!repository) return;
+            const started = Date.now();
             let total: number | null = null;
             try {
                 total = await github.getTotalPullRequests(repository.full_name);
@@ -164,6 +177,19 @@ async function countPullRequests(
                 archived: repository.archived ?? null,
                 disabled: repository.disabled ?? null,
             });
+            console.log(
+                JSON.stringify({
+                    time: new Date().toISOString(),
+                    job: 'github:repositories-pr-counts',
+                    message: 'Repository processing completed',
+                    repository: repository.full_name,
+                    completed: rows.length,
+                    total: repositories.length,
+                    totalPullRequests: total,
+                    status: total === null ? 'unresolved' : 'success',
+                    durationMs: Date.now() - started,
+                })
+            );
         }
     };
     await Promise.all(
