@@ -37,6 +37,7 @@ export async function runJob(
     logger.info('Job started', { job: job.name, format: options.format });
     try {
         const rowCount = await exportRows(execute(context), {
+            ...job.csvOptions,
             ...options,
             columns: options.columns ?? job.columns,
             outputPath,

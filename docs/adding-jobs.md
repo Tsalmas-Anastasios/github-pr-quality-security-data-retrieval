@@ -88,6 +88,8 @@ Paths in this example are relative to a caller at the repository root. See [`exa
 
 The optional third argument to `runJob()` accepts a `config`, `http`, `logger`, or `signal` override to customize the execution context. `job.prepare(input)(context)` returns just the processed record iterator if you want to consume records without writing a file.
 
+A definition can set `csvOptions: { utf8Bom: true, csvEscapeFormulas: false }` when its CSV contract requires a UTF-8 BOM and exact string cells. Normal CSV jobs omit this setting and retain the shared writer's defaults. Explicit options passed to `runJob()` take precedence over a job's CSV defaults.
+
 ## Verify the behavior
 
 Format the code, validate its types, and compile it:

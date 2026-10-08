@@ -66,17 +66,18 @@ npm run job -- github:pull-requests \
 
 Existing files are protected by default. Add `--overwrite` to replace one after the new run succeeds. `--input` and `--config` are alternatives; configuration files contain the job's input object, not CLI flags.
 
-| Job name                      | Purpose                                                                                |
-| ----------------------------- | -------------------------------------------------------------------------------------- |
-| `example`                     | Local records to verify setup without network access                                   |
-| `github:pull-requests`        | Paginated PR collection, normalized metadata, and optional detailed metrics            |
-| `api:json`                    | JSON API collection with record selection, field mapping, and optional Link pagination |
-| `github:repositories`         | Repository discovery and metadata for users or organizations                           |
-| `github:labels`               | Repository label names, descriptions, and colors                                       |
-| `github:pull-request-files`   | Changed files, change counts, and available patches for one PR                         |
-| `github:pull-request-commits` | Commit messages, authors, timestamps, and parent SHAs for one PR                       |
+| Job name                        | Purpose                                                                                |
+| ------------------------------- | -------------------------------------------------------------------------------------- |
+| `example`                       | Local records to verify setup without network access                                   |
+| `github:pull-requests`          | Paginated PR collection, normalized metadata, and optional detailed metrics            |
+| `api:json`                      | JSON API collection with record selection, field mapping, and optional Link pagination |
+| `github:repositories`           | Repository discovery and metadata for users or organizations                           |
+| `github:repositories-pr-counts` | All accessible owned repositories with total PR counts across every state              |
+| `github:labels`                 | Repository label names, descriptions, and colors                                       |
+| `github:pull-request-files`     | Changed files, change counts, and available patches for one PR                         |
+| `github:pull-request-commits`   | Commit messages, authors, timestamps, and parent SHAs for one PR                       |
 
-See [job inputs and examples](docs/jobs.md) for every supported option. API jobs export at most 100 records by default. Set `maxItems` to `null` to collect all available records. The PR file and commit jobs verify counts and fail if a requested full dataset exceeds GitHub's endpoint limits.
+See [job inputs and examples](docs/jobs.md) for every supported option. Most paginated API jobs export at most 100 records by default; set `maxItems` to `null` to collect all available records. `github:repositories-pr-counts` always collects all available repositories. The PR file and commit jobs verify counts and fail if a requested full dataset exceeds GitHub's endpoint limits.
 
 ## TypeScript and compiled JavaScript
 
@@ -107,7 +108,29 @@ Compiled JavaScript callers import from `./dist/index.js`. Library imports do no
 
 ## Export repositories with total PR counts
 
-`exportGitHubRepositories(usernames: string[]): Promise<string>` automatically detects users and organizations, follows every repository page, and exports one row per repository ID. It includes forks, archived and disabled repositories, and repositories with zero PRs. It uses REST issue search with `repo:owner/repository is:pr` and `per_page=1` to read `total_count` across open, closed, and merged PRs without downloading PR lists.
+Run the named job through the same CLI as the other jobs:
+
+```sh
+npm run job -- github:repositories-pr-counts \
+  --config examples/github-repositories-pr-counts.json --format csv
+```
+
+Edit `owners` in the example configuration, or supply the list directly:
+
+```sh
+npm run job -- github:repositories-pr-counts \
+  --input '{"owners":["apache","microsoft","facebook"]}' --format csv
+```
+
+The job automatically detects users and organizations, follows every repository page, and exports one row per repository ID. It includes forks, archived and disabled repositories, and repositories with zero PRs. It uses REST issue search with `repo:owner/repository is:pr` and `per_page=1` to read `total_count` across open, closed, and merged PRs without downloading PR lists. It also supports `--format json` or `jsonl`, `--columns`, `--output`, and `--overwrite`, using the shared runner's output and cancellation behavior. Its default output is a unique file in `OUTPUT_DIR`; the printed result contains the absolute path. To use a fixed CSV filename:
+
+```sh
+npm run job -- github:repositories-pr-counts \
+  --config examples/github-repositories-pr-counts.json --format csv \
+  --output data/exports/github-repositories-pr-counts.csv --overwrite
+```
+
+The reusable function `exportGitHubRepositories(usernames: string[]): Promise<string>` uses the same collection code and writes a CSV directly:
 
 ```ts
 import { exportGitHubRepositories, loadEnvironment } from './src/index.js';
@@ -123,9 +146,9 @@ Or run the supplied example with any number of owners:
 npx tsx examples/export-github-repositories.ts apache microsoft facebook
 ```
 
-Configure authentication by setting `GITHUB_TOKEN` in the shell environment or in your ignored `.env` file, then calling `loadEnvironment()`. Leave it unset for public access. For private repositories, the token must cover the selected repositories and satisfy any organization access requirements. Repository listing requires **Metadata: read** for fine-grained tokens; [issue/PR search requires no additional fine-grained permissions](https://docs.github.com/en/rest/search/search#search-issues-and-pull-requests). The function never prints the token and uses `Authorization: Bearer`, `Accept: application/vnd.github+json`, and API version `2022-11-28`.
+Configure authentication by setting `GITHUB_TOKEN` in the shell environment or in your ignored `.env` file. The CLI loads `.env` automatically; library callers use `loadEnvironment()`. Leave it unset for public access. For private repositories, the token must cover the selected repositories and satisfy any organization access requirements. Repository listing requires **Metadata: read** for fine-grained tokens; [issue/PR search requires no additional fine-grained permissions](https://docs.github.com/en/rest/search/search#search-issues-and-pull-requests). The job and function never print the token and use `Authorization: Bearer`, `Accept: application/vnd.github+json`, and API version `2022-11-28`.
 
-The file is `data/exports/github-repositories-pr-counts.csv` by default, honoring the project's existing export location. Set `OUTPUT_DIR` to change its directory. A successful run atomically replaces the previous file. The CSV contains these columns in this order:
+The reusable function writes `data/exports/github-repositories-pr-counts.csv` by default, honoring the project's existing export location. Set `OUTPUT_DIR` to change its directory. A successful function call atomically replaces the previous file; CLI jobs require `--overwrite` to replace an existing file. The CSV contains these columns in this order:
 
 ```text
 repository_name,username,full_name,total_pull_requests,visibility,default_branch,archived,disabled
@@ -135,7 +158,7 @@ Counts sort descending; unresolved counts sort last and stay empty. UTF-8 with a
 
 Duplicate owners are handled case-insensitively. Empty input produces a header-only CSV. Invalid or unavailable owners are reported and other owners continue. If a later repository page fails, repositories from earlier pages remain in the export and that owner is reported as incomplete. An unreliable count (HTTP error, malformed count, or `incomplete_results: true`) is reported individually and stays empty after bounded retries. File-writing failures reject the function and preserve the previous output.
 
-The execution summary goes to stderr using the project logger and includes `ownersRequested` (the original array length), `ownersSuccessfullyProcessed` (unique valid owners whose required listings completed), `repositoriesDiscovered`, `successfulPullRequestCounts`, `unresolvedPullRequestCounts`, and `outputPath`. Keep `LOG_LEVEL=info` to see the summary.
+The execution summary goes to stderr using the project logger and includes `ownersRequested` (the original array length), `ownersSuccessfullyProcessed` (unique valid owners whose required listings completed), `repositoriesDiscovered`, `successfulPullRequestCounts`, and `unresolvedPullRequestCounts`. The function includes `outputPath` in its summary; the named job reports the absolute path in the runner's completion log and printed result. Keep `LOG_LEVEL=info` to see the summary.
 
 Repository discovery is sequential; PR counts use at most three workers. The shared HTTP client honors primary and secondary rate limits, shares cooldowns across workers, and respects `Retry-After` and `X-RateLimit-Reset`. Existing timeout, retry-count, and maximum-delay settings apply. Successful requests receive no arbitrary delay. Search has a separate, tighter rate limit; requests needing a wait above `API_MAX_RETRY_DELAY_MS` fail clearly rather than retrying early.
 
@@ -182,7 +205,7 @@ Defaults are in [`.env.example`](.env.example). Existing shell environment varia
 | `API_RETRIES`            | `3`                      | Additional attempts after the initial request             |
 | `API_MAX_RETRY_DELAY_MS` | `120000`                 | Maximum allowed wait before retrying                      |
 
-GitHub requests run sequentially and follow API pagination links. Temporary network errors, server errors, and rate limits retry with delays; permission errors fail immediately. If a server requires a delay above the configured maximum, the run fails so you can increase it or retry later. This follows [GitHub's API guidance](https://docs.github.com/en/rest/using-the-rest-api/best-practices-for-using-the-rest-api).
+GitHub requests follow API pagination links. Temporary network errors, server errors, and rate limits retry with delays; permission errors fail immediately. If a server requires a delay above the configured maximum, the run fails so you can increase it or retry later. This follows [GitHub's API guidance](https://docs.github.com/en/rest/using-the-rest-api/best-practices-for-using-the-rest-api).
 
 The shared `sleep()`, `withTimeout()`, `getErrorMessage()`, and repository URL helpers are exported from `src/index.ts` for custom jobs. GitHub requests use `GITHUB_TIMEOUT_MS`; other APIs use `API_TIMEOUT_MS`. Timeout helpers cancel requests and clean up timers and abort listeners after completion.
 
@@ -198,9 +221,8 @@ Jobs run on demand. To schedule one later, invoke the compiled CLI from cron, a 
 
 ```sh
 npm run typecheck
-npm test
 npm run format
 npm run check
 ```
 
-`npm run check` validates types, runs the mocked GitHub API tests with Node's built-in test runner, checks formatting, and builds JavaScript. Tests use fake timers for rate limits and backoff and require no external network access. GitHub Actions runs the same checks on pushes and pull requests.
+`npm run check` validates types, checks formatting, and builds JavaScript. GitHub Actions runs the same checks on pushes and pull requests.

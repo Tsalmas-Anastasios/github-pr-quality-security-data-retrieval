@@ -2,6 +2,7 @@ import type { z } from 'zod';
 import type { AppConfig } from '../config/env.js';
 import type { HttpClient } from '../clients/http.js';
 import type { Logger } from './logger.js';
+import type { ExportOptions } from '../exporters/file.js';
 
 export type ExportRow = Record<string, unknown>;
 
@@ -17,6 +18,7 @@ export interface JobDefinition<Input> {
     description: string;
     inputSchema: z.ZodType<Input>;
     columns?: readonly string[];
+    csvOptions?: Pick<ExportOptions, 'utf8Bom' | 'csvEscapeFormulas'>;
     run(input: Input, context: JobContext): AsyncIterable<ExportRow>;
 }
 
@@ -24,6 +26,7 @@ export interface Job {
     name: string;
     description: string;
     columns?: readonly string[] | undefined;
+    csvOptions?: Pick<ExportOptions, 'utf8Bom' | 'csvEscapeFormulas'> | undefined;
     prepare(input: unknown): (context: JobContext) => AsyncIterable<ExportRow>;
 }
 
@@ -33,6 +36,7 @@ export function defineJob<Input>(definition: JobDefinition<Input>): Job {
         name: definition.name,
         description: definition.description,
         columns: definition.columns,
+        csvOptions: definition.csvOptions,
         prepare(input) {
             const parsed = definition.inputSchema.parse(input);
             return (context) => definition.run(parsed, context);

@@ -57,6 +57,36 @@ Output includes owner, name, full name, browser URL, description, language, defa
 npm run job -- github:repositories --config examples/github-repositories.json --format csv
 ```
 
+## Repositories with total pull request counts
+
+Name: `github:repositories-pr-counts`. Input:
+
+```json
+{
+    "owners": ["apache", "microsoft", "facebook"]
+}
+```
+
+`owners` accepts any number of user and organization names, including an empty list. Owner types are detected automatically. This job collects all available pages with 100 repositories per page and does not accept `maxItems`, `perPage`, or `ownerType`. Owners are deduplicated case-insensitively and repositories by GitHub ID. It includes accessible private repositories owned by the authenticated account and visible organization repositories.
+
+The output columns are `repository_name`, `username`, `full_name`, `total_pull_requests`, `visibility`, `default_branch`, `archived`, and `disabled`. Counts include open, closed, and merged PRs. Records sort by count descending, with unresolved counts last. Failed counts remain `null` in JSON/JSONL or empty in CSV; failures are logged without discarding successful records. CSV has a UTF-8 BOM and preserves exact names.
+
+```sh
+npm run job -- github:repositories-pr-counts \
+  --config examples/github-repositories-pr-counts.json --format csv
+```
+
+Or pass owners directly:
+
+```sh
+npm run job -- github:repositories-pr-counts \
+  --input '{"owners":["apache","microsoft"]}' --format csv
+```
+
+The normal `--output`, `--columns`, and `--overwrite` options apply. Without `--output`, the runner creates a unique file in `OUTPUT_DIR` and prints its absolute path. Like other jobs, the CLI loads `GITHUB_TOKEN` from `.env` and supports cancellation. For a fixed output filename, add `--output data/exports/github-repositories-pr-counts.csv`; add `--overwrite` to replace an existing file.
+
+The collector uses at most three PR-count workers and the shared HTTP retries and rate-limit cooldowns. Owners with failed listings are reported as incomplete; repositories discovered before a later page failure are preserved. It cannot enumerate private repositories owned by another regular user through the public user listing endpoint. See [repository export behavior and access limits](../README.md#export-repositories-with-total-pr-counts).
+
 ## Repository labels
 
 Name: `github:labels`. Input: `repository` (required), `perPage` (1–100, default 100), and `maxItems` (positive integer or `null`, default 100).

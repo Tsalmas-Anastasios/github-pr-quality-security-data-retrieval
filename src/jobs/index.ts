@@ -3,6 +3,7 @@ import { jsonApiJob } from './api/json.js';
 import { exampleJob } from './example.js';
 import { githubPullRequestsJob } from './github/pull-requests.js';
 import { githubRepositoriesJob } from './github/repositories.js';
+import { githubRepositoriesPrCountsJob } from './github/repositories-pr-counts.js';
 import { githubLabelsJob } from './github/labels.js';
 import { githubPullRequestFilesJob } from './github/pull-request-files.js';
 import { githubPullRequestCommitsJob } from './github/pull-request-commits.js';
@@ -13,6 +14,7 @@ export const jobs: ReadonlyMap<string, Job> = new Map(
         githubPullRequestsJob,
         jsonApiJob,
         githubRepositoriesJob,
+        githubRepositoriesPrCountsJob,
         githubLabelsJob,
         githubPullRequestFilesJob,
         githubPullRequestCommitsJob,
