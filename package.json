@@ -1,0 +1,25 @@
+{
+  "name": "github-pr-quality-security-data-retrieval",
+  "version": "0.0.1",
+  "description": "Functionality to get data from github, mainly data for pull requests",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Tsalmas-Anastasios/github-pr-quality-security-data-retrieval.git"
+  },
+  "keywords": [
+    "software",
+    "quality",
+    "security",
+    "pull-requests"
+  ],
+  "author": "Anastasios Tsalmas",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/Tsalmas-Anastasios/github-pr-quality-security-data-retrieval/issues"
+  },
+  "homepage": "https://github.com/Tsalmas-Anastasios/github-pr-quality-security-data-retrieval#readme"
+}
