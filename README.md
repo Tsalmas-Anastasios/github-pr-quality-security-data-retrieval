@@ -105,6 +105,42 @@ console.log(result.outputPath);
 
 Compiled JavaScript callers import from `./dist/index.js`. Library imports do not load `.env` or start jobs automatically. Call `loadEnvironment()` when you want `.env` loaded.
 
+## Export repositories with total PR counts
+
+`exportGitHubRepositories(usernames: string[]): Promise<string>` automatically detects users and organizations, follows every repository page, and exports one row per repository ID. It includes forks, archived and disabled repositories, and repositories with zero PRs. It uses REST issue search with `repo:owner/repository is:pr` and `per_page=1` to read `total_count` across open, closed, and merged PRs without downloading PR lists.
+
+```ts
+import { exportGitHubRepositories, loadEnvironment } from './src/index.js';
+
+loadEnvironment(); // Optional: load GITHUB_TOKEN and other settings from .env.
+const csvPath = await exportGitHubRepositories(['apache', 'microsoft', 'facebook']);
+console.log(csvPath); // Absolute file path.
+```
+
+Or run the supplied example with any number of owners:
+
+```sh
+npx tsx examples/export-github-repositories.ts apache microsoft facebook
+```
+
+Configure authentication by setting `GITHUB_TOKEN` in the shell environment or in your ignored `.env` file, then calling `loadEnvironment()`. Leave it unset for public access. For private repositories, the token must cover the selected repositories and satisfy any organization access requirements. Repository listing requires **Metadata: read** for fine-grained tokens; [issue/PR search requires no additional fine-grained permissions](https://docs.github.com/en/rest/search/search#search-issues-and-pull-requests). The function never prints the token and uses `Authorization: Bearer`, `Accept: application/vnd.github+json`, and API version `2022-11-28`.
+
+The file is `data/exports/github-repositories-pr-counts.csv` by default, honoring the project's existing export location. Set `OUTPUT_DIR` to change its directory. A successful run atomically replaces the previous file. The CSV contains these columns in this order:
+
+```text
+repository_name,username,full_name,total_pull_requests,visibility,default_branch,archived,disabled
+```
+
+Counts sort descending; unresolved counts sort last and stay empty. UTF-8 with a BOM and CRLF records supports Excel and other CSV readers. CSV quoting preserves names and escapes commas, quotes, and line breaks. This export preserves exact cell strings, including repository names starting with `-`; other job exports retain their existing formula-string protection.
+
+Duplicate owners are handled case-insensitively. Empty input produces a header-only CSV. Invalid or unavailable owners are reported and other owners continue. If a later repository page fails, repositories from earlier pages remain in the export and that owner is reported as incomplete. An unreliable count (HTTP error, malformed count, or `incomplete_results: true`) is reported individually and stays empty after bounded retries. File-writing failures reject the function and preserve the previous output.
+
+The execution summary goes to stderr using the project logger and includes `ownersRequested` (the original array length), `ownersSuccessfullyProcessed` (unique valid owners whose required listings completed), `repositoriesDiscovered`, `successfulPullRequestCounts`, `unresolvedPullRequestCounts`, and `outputPath`. Keep `LOG_LEVEL=info` to see the summary.
+
+Repository discovery is sequential; PR counts use at most three workers. The shared HTTP client honors primary and secondary rate limits, shares cooldowns across workers, and respects `Retry-After` and `X-RateLimit-Reset`. Existing timeout, retry-count, and maximum-delay settings apply. Successful requests receive no arbitrary delay. Search has a separate, tighter rate limit; requests needing a wait above `API_MAX_RETRY_DELAY_MS` fail clearly rather than retrying early.
+
+GitHub access limits still apply. Organization listing includes repositories visible to the token. For the authenticated user's own account, public listing is merged with paginated `/user/repos?affiliation=owner` results. [Other users' repository listings expose only public repositories](https://docs.github.com/en/rest/repos/repos#list-repositories-for-a-user), so this function cannot enumerate arbitrary private repositories owned by another user. Search counts reflect GitHub's search index and may lag recent changes; an incomplete search response is never accepted as a complete count. If all owners fail, the output contains only the header and the summary reports zero successfully processed owners.
+
 ## Project layout
 
 ```text
@@ -162,8 +198,9 @@ Jobs run on demand. To schedule one later, invoke the compiled CLI from cron, a 
 
 ```sh
 npm run typecheck
+npm test
 npm run format
 npm run check
 ```
 
-`npm run check` validates types, checks formatting, and builds JavaScript. GitHub Actions runs the same checks on pushes and pull requests.
+`npm run check` validates types, runs the mocked GitHub API tests with Node's built-in test runner, checks formatting, and builds JavaScript. Tests use fake timers for rate limits and backoff and require no external network access. GitHub Actions runs the same checks on pushes and pull requests.

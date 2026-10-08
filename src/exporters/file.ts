@@ -12,13 +12,19 @@ export interface ExportOptions {
     columns?: readonly string[] | undefined;
     overwrite?: boolean | undefined;
     signal?: AbortSignal | undefined;
+    utf8Bom?: boolean;
+    csvEscapeFormulas?: boolean;
 }
 
-export function csvCell(value: unknown): string {
+export function csvCell(value: unknown, escapeFormulas = true): string {
     if (value === undefined || value === null) return '';
     let text = typeof value === 'object' ? JSON.stringify(value) : String(value);
     // Preserve numeric negatives; neutralize spreadsheet formula strings.
-    if (typeof value === 'string' && (/^\s*[=+\-@]/.test(text) || /^[\t\r]/.test(text)))
+    if (
+        escapeFormulas &&
+        typeof value === 'string' &&
+        (/^\s*[=+\-@]/.test(text) || /^[\t\r]/.test(text))
+    )
         text = `'${text}`;
     return /[",\r\n]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
 }
@@ -49,7 +55,10 @@ export async function exportRows(
     let count = 0;
     let columns = options.columns ? [...options.columns] : undefined;
     let headerWritten = false;
+    const encodeCell = (value: unknown): string =>
+        csvCell(value, options.csvEscapeFormulas ?? true);
     try {
+        if (options.format === 'csv' && options.utf8Bom) await file.writeFile('\uFEFF');
         if (options.format === 'json') await file.writeFile('[\n');
         for await (const row of rows) {
             options.signal?.throwIfAborted();
@@ -68,10 +77,10 @@ export async function exportRows(
                     );
                 }
                 if (!headerWritten) {
-                    await file.writeFile(`${columns.map(csvCell).join(',')}\r\n`);
+                    await file.writeFile(`${columns.map(encodeCell).join(',')}\r\n`);
                     headerWritten = true;
                 }
-                await file.writeFile(`${columns.map((key) => csvCell(row[key])).join(',')}\r\n`);
+                await file.writeFile(`${columns.map((key) => encodeCell(row[key])).join(',')}\r\n`);
             } else {
                 const serialized = JSON.stringify(row);
                 await file.writeFile(
@@ -86,7 +95,7 @@ export async function exportRows(
         if (options.format === 'csv' && !headerWritten) {
             if (!columns?.length)
                 throw new Error('An empty CSV export needs --columns or predefined job columns');
-            await file.writeFile(`${columns.map(csvCell).join(',')}\r\n`);
+            await file.writeFile(`${columns.map(encodeCell).join(',')}\r\n`);
         }
         if (options.format === 'json') await file.writeFile(`${count ? '\n' : ''}]\n`);
         await file.close();

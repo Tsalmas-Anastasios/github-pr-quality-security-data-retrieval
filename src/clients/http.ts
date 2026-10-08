@@ -43,6 +43,9 @@ export function getNextLink(link: string | null, baseUrl: string): string | unde
 }
 
 export class HttpClient {
+    // Concurrent callers share a cooldown so a rate limit pauses queued requests too.
+    private readonly rateLimitDeadlines = new Map<string, number>();
+
     constructor(private readonly options: HttpClientOptions) {}
 
     async getJson(
@@ -61,6 +64,7 @@ export class HttpClient {
         const safeUrl = `${url.origin}${url.pathname}`;
         for (let attempt = 0; attempt <= this.options.retries; attempt++) {
             options.signal?.throwIfAborted();
+            await this.waitForRateLimit(url, safeUrl, options.signal);
             let response: Response;
             let body: string;
             try {
@@ -91,6 +95,15 @@ export class HttpClient {
             }
 
             if (response.ok) {
+                if (response.headers.get('x-ratelimit-remaining') === '0') {
+                    const reset = Number(response.headers.get('x-ratelimit-reset'));
+                    if (Number.isFinite(reset) && reset > 0) {
+                        this.deferRequests(
+                            url.origin,
+                            Math.max(0, reset * 1000 - Date.now() + 1000)
+                        );
+                    }
+                }
                 try {
                     const data: unknown = JSON.parse(body);
                     return {
@@ -104,6 +117,7 @@ export class HttpClient {
             }
 
             const retry = getHttpRetryDecision(response.status, response.headers, body, attempt);
+            if (retry.rateLimited) this.deferRequests(url.origin, retry.delayMs);
             if (!retry.retryable || attempt === this.options.retries) {
                 throw new HttpError(
                     `API request failed with HTTP ${response.status} at ${safeUrl}`,
@@ -114,6 +128,26 @@ export class HttpClient {
             await this.waitToRetry(retry.delayMs, safeUrl, attempt, options.signal);
         }
         throw new HttpError('Retry limit exhausted');
+    }
+
+    private deferRequests(origin: string, delayMs: number): void {
+        this.rateLimitDeadlines.set(
+            origin,
+            Math.max(this.rateLimitDeadlines.get(origin) ?? 0, Date.now() + delayMs)
+        );
+    }
+
+    private async waitForRateLimit(url: URL, safeUrl: string, signal?: AbortSignal): Promise<void> {
+        while (true) {
+            const waitMs = (this.rateLimitDeadlines.get(url.origin) ?? 0) - Date.now();
+            if (waitMs <= 0) return;
+            if (waitMs > this.options.maxRetryDelayMs) {
+                throw new HttpError(
+                    `API rate limit at ${safeUrl} requires a ${Math.ceil(waitMs / 1000)}s wait; increase API_MAX_RETRY_DELAY_MS or run later`
+                );
+            }
+            await sleep(waitMs, signal);
+        }
     }
 
     private async requestWithRedirects(

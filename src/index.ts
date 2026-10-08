@@ -16,6 +16,7 @@ export {
     type GitHubConnectionResult,
     type PullRequest,
     type GitHubRepository,
+    type GitHubOwner,
     type GitHubLabel,
     type PullRequestFile,
     type PullRequestCommit,
@@ -26,6 +27,12 @@ export { getErrorMessage } from './utils/error.js';
 export { getBackoffDelay, getHttpRetryDecision } from './utils/retry.js';
 export { parseGitHubRepository, getGitHubRepositoryUrl } from './utils/github.js';
 export { exportRows, exportFormats, type ExportFormat } from './exporters/file.js';
+export {
+    exportGitHubRepositories,
+    githubRepositoryExportColumns,
+    type GitHubRepositoryExportRow,
+    type GitHubRepositoryExportSummary,
+} from './exporters/github-repositories.js';
 export { jobs, getJob } from './jobs/index.js';
 export { exampleJob } from './jobs/example.js';
 export { jsonApiJob, jsonApiInputSchema } from './jobs/api/json.js';

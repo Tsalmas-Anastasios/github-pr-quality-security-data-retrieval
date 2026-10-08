@@ -3,6 +3,7 @@ import type { JobContext } from '../core/job.js';
 import { assertSameOrigin, getNextLink } from './http.js';
 import {
     labelSchema,
+    githubOwnerResponseSchema,
     pullRequestCommitSchema,
     pullRequestFileSchema,
     pullRequestSchema,
@@ -11,11 +12,14 @@ import {
     type GitHubLabel,
     type GitHubRateLimit,
     type GitHubRepository,
+    type GitHubOwner,
     type PullRequest,
     type PullRequestCommit,
     type PullRequestFile,
 } from './github-schemas.js';
 import { githubOwnerSchema, parseGitHubRepository } from '../utils/github.js';
+import { getBackoffDelay } from '../utils/retry.js';
+import { sleep } from '../utils/time.js';
 
 export * from './github-schemas.js';
 
@@ -69,6 +73,59 @@ export class GitHubClient {
         return repositorySchema.parse((await this.request(this.repositoryUrl(repository))).data);
     }
 
+    async getOwner(owner: string): Promise<GitHubOwner> {
+        const name = githubOwnerSchema.parse(owner);
+        return this.readOwner(new URL(`users/${encodeURIComponent(name)}`, this.baseUrl));
+    }
+
+    async getAuthenticatedOwner(): Promise<GitHubOwner> {
+        return this.readOwner(new URL('user', this.baseUrl));
+    }
+
+    listAuthenticatedOwnedRepositories(perPage = 100): AsyncIterable<GitHubRepository> {
+        const url = new URL('user/repos', this.baseUrl);
+        url.search = new URLSearchParams({ affiliation: 'owner', page: '1' }).toString();
+        return this.paginate(this.withPerPage(url, perPage), repositorySchema);
+    }
+
+    /** Search total_count covers open, closed, and merged PRs without downloading them. */
+    async getTotalPullRequests(repository: string): Promise<number> {
+        parseGitHubRepository(repository);
+        const url = new URL('search/issues', this.baseUrl);
+        url.search = new URLSearchParams({
+            q: `repo:${repository} is:pr`,
+            per_page: '1',
+        }).toString();
+        const schema = z.object({
+            total_count: z.number().int().nonnegative(),
+            incomplete_results: z.boolean(),
+        });
+        for (let attempt = 0; attempt <= this.context.config.API_RETRIES; attempt++) {
+            // Transport failures already receive bounded retries in the shared HTTP client.
+            const response = await this.request(url);
+            const result = schema.safeParse(response.data);
+            if (result.success && !result.data.incomplete_results) return result.data.total_count;
+            const reason = result.success
+                ? 'GitHub search returned incomplete_results: true'
+                : 'GitHub search returned a missing or malformed total_count/incomplete_results';
+            if (attempt === this.context.config.API_RETRIES) {
+                throw new Error(`${reason} after ${attempt + 1} attempt(s)`);
+            }
+            const waitMs = getBackoffDelay(attempt);
+            if (waitMs > this.context.config.API_MAX_RETRY_DELAY_MS) {
+                throw new Error(`${reason}; required retry delay exceeds API_MAX_RETRY_DELAY_MS`);
+            }
+            this.context.logger.warn('Retrying unreliable GitHub PR count', {
+                repository,
+                reason,
+                attempt: attempt + 1,
+                waitMs,
+            });
+            await sleep(waitMs, this.context.signal);
+        }
+        throw new Error('GitHub search retry limit exhausted');
+    }
+
     listRepositories(
         owner: string,
         ownerType: 'user' | 'organization' = 'user',
@@ -83,6 +140,7 @@ export class GitHubClient {
             type: ownerType === 'user' ? 'owner' : 'all',
             sort: 'full_name',
             direction: 'asc',
+            page: '1',
         }).toString();
         return this.paginate(this.withPerPage(url, perPage), repositorySchema);
     }
@@ -176,6 +234,12 @@ export class GitHubClient {
             timeoutMs: this.context.config.GITHUB_TIMEOUT_MS,
             signal: this.context.signal,
         });
+    }
+
+    private async readOwner(url: URL): Promise<GitHubOwner> {
+        const result = githubOwnerResponseSchema.safeParse((await this.request(url)).data);
+        if (!result.success) throw new Error('GitHub returned an invalid user or organization');
+        return result.data;
     }
 
     private withPerPage(url: URL, perPage: number): URL {
