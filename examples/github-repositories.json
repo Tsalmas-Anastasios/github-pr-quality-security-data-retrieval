@@ -1,0 +1,6 @@
+{
+    "owners": ["octocat"],
+    "ownerType": "user",
+    "perPage": 100,
+    "maxItems": 100
+}

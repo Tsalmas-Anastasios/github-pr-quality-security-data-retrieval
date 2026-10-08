@@ -1,0 +1,7 @@
+{
+    "repository": "octocat/Hello-World",
+    "state": "all",
+    "perPage": 100,
+    "maxItems": 100,
+    "includeDetails": false
+}

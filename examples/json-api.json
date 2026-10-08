@@ -1,0 +1,10 @@
+{
+    "url": "https://jsonplaceholder.typicode.com/posts",
+    "fields": {
+        "id": "id",
+        "user_id": "userId",
+        "title": "title",
+        "body": "body"
+    },
+    "maxItems": 100
+}
