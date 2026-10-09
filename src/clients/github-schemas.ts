@@ -34,6 +34,35 @@ export const pullRequestSchema = z.object({
     review_comments: optionalCount,
 });
 
+const datasetUserSchema = z.object({
+    login: z.string(),
+    id: z.number().int().positive().optional(),
+    type: z.string().optional(),
+});
+const datasetBranchSchema = z.object({
+    ref: z.string(),
+    sha: z.string(),
+    repo: z.object({ full_name: z.string() }).nullish(),
+});
+
+/** Additional list/detail metadata needed for the complete PR dataset. */
+export const pullRequestDatasetSchema = pullRequestSchema.extend({
+    id: z.number().int().positive(),
+    node_id: z.string().min(1),
+    url: z.url(),
+    user: datasetUserSchema.nullable(),
+    author_association: optionalText,
+    head: datasetBranchSchema,
+    base: datasetBranchSchema,
+    merge_commit_sha: optionalText,
+    assignees: z.array(datasetUserSchema).nullish(),
+    requested_reviewers: z.array(datasetUserSchema).nullish(),
+    requested_teams: z.array(z.object({ slug: z.string() })).nullish(),
+    milestone: z.object({ title: z.string() }).nullish(),
+    locked: z.boolean().nullish(),
+    maintainer_can_modify: z.boolean().nullish(),
+});
+
 export const repositorySchema = z.object({
     id: z.number().int(),
     name: z.string(),
@@ -110,6 +139,7 @@ export const rateLimitSchema = z.object({
 });
 
 export type PullRequest = z.infer<typeof pullRequestSchema>;
+export type PullRequestDataset = z.infer<typeof pullRequestDatasetSchema>;
 export type GitHubRepository = z.infer<typeof repositorySchema>;
 export type GitHubOwner = z.infer<typeof githubOwnerResponseSchema>;
 export type GitHubLabel = z.infer<typeof labelSchema>;

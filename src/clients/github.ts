@@ -7,6 +7,7 @@ import {
     pullRequestCommitSchema,
     pullRequestFileSchema,
     pullRequestSchema,
+    pullRequestDatasetSchema,
     rateLimitSchema,
     repositorySchema,
     type GitHubLabel,
@@ -14,6 +15,7 @@ import {
     type GitHubRepository,
     type GitHubOwner,
     type PullRequest,
+    type PullRequestDataset,
     type PullRequestCommit,
     type PullRequestFile,
 } from './github-schemas.js';
@@ -24,6 +26,12 @@ import { sleep } from '../utils/time.js';
 export * from './github-schemas.js';
 
 export const gitHubPullRequestLimits = { files: 3000, commits: 250 } as const;
+
+export interface GitHubPage<T> {
+    items: T[];
+    url: string;
+    nextUrl: string | null;
+}
 
 export interface GitHubConnectionResult {
     api_url: string;
@@ -67,6 +75,28 @@ export class GitHubClient {
             this.repositoryUrl(repository, `pulls/${this.pullRequestNumber(number)}`)
         );
         return pullRequestSchema.parse(response.data);
+    }
+
+    listPullRequestDatasetPages(
+        repository: string,
+        nextUrl?: string
+    ): AsyncIterable<GitHubPage<PullRequestDataset>> {
+        const url = this.repositoryUrl(repository, 'pulls');
+        url.search = new URLSearchParams({
+            state: 'all',
+            sort: 'created',
+            direction: 'asc',
+            per_page: '100',
+            page: '1',
+        }).toString();
+        return this.paginatePages(url, pullRequestDatasetSchema, nextUrl);
+    }
+
+    async getPullRequestDataset(repository: string, number: number): Promise<PullRequestDataset> {
+        const response = await this.request(
+            this.repositoryUrl(repository, `pulls/${this.pullRequestNumber(number)}`)
+        );
+        return pullRequestDatasetSchema.parse(response.data);
     }
 
     async getRepository(repository: string): Promise<GitHubRepository> {
@@ -209,11 +239,26 @@ export class GitHubClient {
     }
 
     private async *paginate<T>(url: URL, schema: z.ZodType<T>): AsyncIterable<T> {
-        let next: string | undefined = url.href;
+        for await (const page of this.paginatePages(url, schema)) yield* page.items;
+    }
+
+    private async *paginatePages<T>(
+        url: URL,
+        schema: z.ZodType<T>,
+        startUrl?: string
+    ): AsyncIterable<GitHubPage<T>> {
+        let next: string | undefined = startUrl ?? url.href;
         const visited = new Set<string>();
         while (next) {
             this.context.signal?.throwIfAborted();
             assertSameOrigin(new URL(next), this.baseUrl);
+            const current = new URL(next);
+            if (current.pathname !== url.pathname)
+                throw new Error('GitHub pagination changed the requested resource');
+            for (const key of ['state', 'sort', 'direction', 'per_page']) {
+                if (current.searchParams.get(key) !== url.searchParams.get(key))
+                    throw new Error(`GitHub pagination changed ${key}`);
+            }
             if (visited.has(next)) throw new Error('GitHub returned a pagination loop');
             visited.add(next);
             const response = await this.request(new URL(next));
@@ -223,8 +268,15 @@ export class GitHubClient {
                 page: visited.size,
                 count: items.length,
             });
-            yield* items;
             next = getNextLink(response.headers.get('link'), response.url);
+            if (next && items.length === 0)
+                throw new Error('GitHub returned an empty page with a next link');
+            if (response.headers.get('x-ratelimit-remaining') === '0') {
+                this.context.logger.warn('GitHub API rate limit exhausted', {
+                    reset: response.headers.get('x-ratelimit-reset'),
+                });
+            }
+            yield { items, url: current.href, nextUrl: next ?? null };
         }
     }
 
