@@ -25,7 +25,8 @@ export async function runJob(
 ): Promise<RunResult> {
     if (!exportFormats.includes(options.format))
         throw new Error(`Unsupported export format: ${options.format}`);
-    const execute = job.prepare(options.input === undefined ? {} : options.input);
+    const input = options.input === undefined ? {} : options.input;
+    const execute = job.prepare(input);
     const signal = dependencies.signal ?? options.signal;
     const context = createJobContext({ ...dependencies, signal });
     const { config, logger } = context;
@@ -33,16 +34,21 @@ export async function runJob(
     const started = Date.now();
     const timestamp = new Date().toISOString().replaceAll(':', '-');
     const filename = `${job.name.replace(/[^a-z\d_-]/gi, '-')}-${timestamp}-${randomUUID().slice(0, 8)}.${options.format}`;
-    const outputPath = resolve(options.outputPath ?? resolve(config.OUTPUT_DIR, filename));
+    const outputPath = resolve(
+        options.outputPath ?? job.outputPath?.(input) ?? resolve(config.OUTPUT_DIR, filename)
+    );
     logger.info('Job started', { job: job.name, format: options.format });
     try {
-        const rowCount = await exportRows(execute(context), {
+        const exportOptions: ExportOptions = {
             ...job.csvOptions,
             ...options,
             columns: options.columns ?? job.columns,
             outputPath,
             signal,
-        });
+        };
+        const rowCount = job.export
+            ? await job.export(input, context, exportOptions)
+            : await exportRows(execute(context), exportOptions);
         const result = {
             job: job.name,
             format: options.format,

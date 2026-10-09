@@ -20,6 +20,8 @@ export interface JobDefinition<Input> {
     columns?: readonly string[];
     csvOptions?: Pick<ExportOptions, 'utf8Bom' | 'csvEscapeFormulas'>;
     run(input: Input, context: JobContext): AsyncIterable<ExportRow>;
+    outputPath?(input: Input): string | undefined;
+    export?(input: Input, context: JobContext, options: ExportOptions): Promise<number>;
 }
 
 export interface Job {
@@ -28,15 +30,31 @@ export interface Job {
     columns?: readonly string[] | undefined;
     csvOptions?: Pick<ExportOptions, 'utf8Bom' | 'csvEscapeFormulas'> | undefined;
     prepare(input: unknown): (context: JobContext) => AsyncIterable<ExportRow>;
+    outputPath?(input: unknown): string | undefined;
+    export?(input: unknown, context: JobContext, options: ExportOptions): Promise<number>;
 }
 
 /** Preserve typed inputs inside each job while exposing a uniform registry interface. */
 export function defineJob<Input>(definition: JobDefinition<Input>): Job {
+    const resolveOutputPath = definition.outputPath;
+    const exportJob = definition.export;
     return {
         name: definition.name,
         description: definition.description,
         columns: definition.columns,
         csvOptions: definition.csvOptions,
+        ...(resolveOutputPath
+            ? {
+                  outputPath: (input: unknown) =>
+                      resolveOutputPath(definition.inputSchema.parse(input)),
+              }
+            : {}),
+        ...(exportJob
+            ? {
+                  export: (input: unknown, context: JobContext, options: ExportOptions) =>
+                      exportJob(definition.inputSchema.parse(input), context, options),
+              }
+            : {}),
         prepare(input) {
             const parsed = definition.inputSchema.parse(input);
             return (context) => definition.run(parsed, context);
