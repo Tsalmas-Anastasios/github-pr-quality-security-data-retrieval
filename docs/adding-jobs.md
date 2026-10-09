@@ -90,6 +90,8 @@ The optional third argument to `runJob()` accepts a `config`, `http`, `logger`, 
 
 A definition can set `csvOptions: { utf8Bom: true, csvEscapeFormulas: false }` when its CSV contract requires a UTF-8 BOM and exact string cells. Normal CSV jobs omit this setting and retain the shared writer's defaults. Explicit options passed to `runJob()` take precedence over a job's CSV defaults.
 
+Jobs with durable export state can provide an optional `export(input, context, options)` function returning the written row count. The runner still validates input, creates the shared context, resolves output flags, and reports success or failure. The ordinary `run()` generator remains available for direct record consumption. An optional `outputPath(input)` supplies a destination from job input; the runner's `--output` takes precedence. `github:pull-requests-export` uses these hooks for page checkpoints in CSV while retaining the normal JSON/JSONL writer.
+
 ## Verify the behavior
 
 Format the code, validate its types, and compile it:

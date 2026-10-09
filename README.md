@@ -70,6 +70,7 @@ Existing files are protected by default. Add `--overwrite` to replace one after 
 | ------------------------------- | -------------------------------------------------------------------------------------- |
 | `example`                       | Local records to verify setup without network access                                   |
 | `github:pull-requests`          | Paginated PR collection, normalized metadata, and optional detailed metrics            |
+| `github:pull-requests-export`   | Rank repositories from CSV and export complete PR histories with CSV checkpoints       |
 | `api:json`                      | JSON API collection with record selection, field mapping, and optional Link pagination |
 | `github:repositories`           | Repository discovery and metadata for users or organizations                           |
 | `github:repositories-pr-counts` | All accessible owned repositories with total PR counts across every state              |
@@ -163,6 +164,22 @@ The execution summary goes to stderr using the project logger and includes `owne
 Repository discovery is sequential; PR counts use at most three workers. The shared HTTP client honors primary and secondary rate limits, shares cooldowns across workers, and respects `Retry-After` and `X-RateLimit-Reset`. Existing timeout, retry-count, and maximum-delay settings apply. Successful requests receive no arbitrary delay. Search has a separate, tighter rate limit; requests needing a wait above `API_MAX_RETRY_DELAY_MS` fail clearly rather than retrying early.
 
 GitHub access limits still apply. Organization listing includes repositories visible to the token. For the authenticated user's own account, public listing is merged with paginated `/user/repos?affiliation=owner` results. [Other users' repository listings expose only public repositories](https://docs.github.com/en/rest/repos/repos#list-repositories-for-a-user), so this function cannot enumerate arbitrary private repositories owned by another user. Search counts reflect GitHub's search index and may lag recent changes; an incomplete search response is never accepted as a complete count. If all owners fail, the output contains only the header and the summary reports zero successfully processed owners.
+
+## Export a PR dataset from repository counts
+
+Use the repository-count CSV as input to the registered job:
+
+```sh
+npm run job -- github:pull-requests-export \
+  --config examples/github-pull-requests-export.json --format csv \
+  --output data/exports/github-pull-requests.csv
+```
+
+Set `inputCsvPath`, `order` (`asc` or `desc`), and `limit` in the example configuration. The limit selects repositories, and the job retrieves every available PR for each selection. Set `includeDetailedStats` to `true` for one additional detail request per PR. Each fetched PR prints a JSON progress line through `console.log`; page and repository summaries go to stderr.
+
+CSV pages are checkpointed on disk, and the final file appears only after all selected repositories complete. Rerun with the same output path and options to resume after an interruption. Existing outputs require `--overwrite`; the input stays unchanged. JSON and JSONL are also available through the normal writer, without resume. See [inputs, CSV columns, and checkpoint behavior](docs/jobs.md#pull-request-dataset-from-repository-csv).
+
+The reusable `exportGitHubPullRequests({ inputCsvPath, order, limit, outputCsvPath?, includeDetailedStats? })` function runs the same job and returns the absolute CSV path. See [`examples/export-github-pull-requests.ts`](examples/export-github-pull-requests.ts).
 
 ## Project layout
 

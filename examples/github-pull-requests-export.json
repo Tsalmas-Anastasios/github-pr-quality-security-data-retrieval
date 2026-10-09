@@ -1,0 +1,6 @@
+{
+    "inputCsvPath": "data/exports/github-repositories-pr-counts.csv",
+    "order": "desc",
+    "limit": 50,
+    "includeDetailedStats": false
+}

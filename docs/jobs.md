@@ -91,6 +91,62 @@ The normal `--output`, `--columns`, and `--overwrite` options apply. Without `--
 
 The collector uses at most three PR-count workers and the shared HTTP retries and rate-limit cooldowns. Owners with failed listings are reported as incomplete; repositories discovered before a later page failure are preserved. It cannot enumerate private repositories owned by another regular user through the public user listing endpoint. See [repository export behavior and access limits](../README.md#export-repositories-with-total-pr-counts).
 
+## Pull request dataset from repository CSV
+
+Name: `github:pull-requests-export`. Run it like any other job:
+
+```sh
+npm run job -- github:pull-requests-export \
+  --config examples/github-pull-requests-export.json --format csv \
+  --output data/exports/github-pull-requests.csv
+```
+
+| Input                  | Type             | Default  | Meaning                                       |
+| ---------------------- | ---------------- | -------- | --------------------------------------------- |
+| `inputCsvPath`         | String           | Required | CSV from `github:repositories-pr-counts`      |
+| `order`                | `asc` or `desc`  | Required | Rank by the CSV's numeric PR counts           |
+| `limit`                | Positive integer | Required | Maximum number of repositories                |
+| `outputCsvPath`        | String           | Unset    | Destination; `--output` takes precedence      |
+| `includeDetailedStats` | Boolean          | `false`  | Retrieve additions, deletions, files, commits |
+
+The reader supports quoted cells, embedded newlines, doubled quotes, and an optional UTF-8 BOM. All eight repository-count CSV headers are required. Blank or invalid PR counts are excluded from ranking and their record count is logged. Counts must be nonnegative safe integers. Repository identifiers must agree; contradictory duplicates fail. Identical repository records are deduplicated case-insensitively. Equal counts sort by repository name, ignoring case. Empty eligible selection fails before GitHub requests.
+
+`limit` counts repositories. Every selected repository is retrieved with `state=all`, 100 records per page, creation order ascending, and `Link` pagination until exhausted. No dates, branches, or merge states are filtered, and the input counts never cap retrieval. Requests run serially through the existing GitHub client, authentication, retries, and rate-limit handling, using API version `2022-11-28`. Optional statistics make one detail request per PR; otherwise their columns stay empty. No related files, commits, reviews, or comments are fetched. Counts unavailable from the list response stay empty.
+
+Each newly fetched PR prints a JSON line through `console.log` on stdout, including repository, PR ID/number, repository index, page, repository PR count, and total PR count. Repository and page summaries go through the project logger on stderr. Count discrepancies with the input CSV are warnings; API or malformed-response failures fail the job without publishing an incomplete CSV. A zero-PR repository completes normally.
+
+CSV output groups repositories in ranking order and PRs in ascending creation order, with number breaking ties within each page. The fixed default column order is:
+
+```text
+repository_name,username,full_name,repository_total_pull_requests,visibility,default_branch,archived,disabled,pull_request_id,pull_request_node_id,pull_request_number,pull_request_url,pull_request_api_url,title,body,state,draft,merged,author_association,created_at,updated_at,closed_at,merged_at,author_login,author_id,author_type,head_ref,head_sha,head_repository,base_ref,base_sha,base_repository,merge_commit_sha,comments,review_comments,labels,assignees,requested_reviewers,requested_teams,milestone,locked,maintainer_can_modify,additions,deletions,changed_files,commits
+```
+
+Array cells contain JSON arrays of label names, assignee/reviewer logins, or team slugs. Milestones contain their titles. Missing nullable values are empty CSV cells. The shared CSV encoder preserves commas, quotes, and line breaks; formula-like strings receive a leading apostrophe for spreadsheet safety. JSON and JSONL preserve original strings.
+
+CSV exports use `<output>.partial`, `<output>.identities`, and `<output>.checkpoint.json` sidecars, with a lock preventing concurrent runs against the same destination. Each complete page is synced before its checkpoint advances. On failure or cancellation, completed pages remain resumable; uncommitted bytes are discarded on resume. Only compact ID/number indexes for the active repository stay in memory. Normal completion, failure, and Ctrl+C remove the lock. Hard process termination can leave `<output>.lock`, which records the process ID and hostname; remove that lock only after confirming the export process has stopped, then rerun to resume.
+
+To resume, rerun the command with **the same output path and options**. The checkpoint verifies the selected repository metadata, ranking options, detailed-statistics option, API base, and CSV settings. It resumes at the next page and skips previously written PR identities. After all repositories complete, the CSV is published atomically and sidecars are removed. Existing destinations require `--overwrite`; the input CSV is always protected. Files created before the initial checkpoint was written cannot be automatically resumed: choose another output path or remove those orphan sidecars after confirming no export is running.
+
+Without a destination, the runner creates a unique timestamped file in `OUTPUT_DIR` and logs its absolute path when the checkpoint is created. Use that exact path with `--output` after an interruption. `--columns` selects CSV fields; `--format json` and `jsonl` also work, using the normal atomic writer and restarting collection after interruption. They do not use CSV checkpoints. GitHub pagination reflects live responses, rather than an immutable historical snapshot; resumed metadata can reflect different fetch times.
+
+The library function uses the same job and returns the absolute CSV path:
+
+```ts
+import { exportGitHubPullRequests, loadEnvironment } from './src/index.js';
+
+loadEnvironment();
+const outputPath = await exportGitHubPullRequests({
+    inputCsvPath: './github-repositories-pr-counts.csv',
+    order: 'desc',
+    limit: 50,
+    outputCsvPath: './github-pull-requests.csv',
+    includeDetailedStats: false,
+});
+console.log(`CSV exported to: ${outputPath}`);
+```
+
+Or run `npx tsx examples/export-github-pull-requests.ts <input.csv> [output.csv]`.
+
 ## Repository labels
 
 Name: `github:labels`. Input: `repository` (required), `perPage` (1–100, default 100), and `maxItems` (positive integer or `null`, default 100).
