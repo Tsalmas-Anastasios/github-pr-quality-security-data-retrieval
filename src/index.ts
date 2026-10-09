@@ -43,6 +43,15 @@ export {
 } from './jobs/github/pull-requests.js';
 export { githubRepositoriesJob } from './jobs/github/repositories.js';
 export { githubRepositoriesPrCountsJob } from './jobs/github/repositories-pr-counts.js';
+export {
+    exportGitHubPullRequests,
+    type GitHubPullRequestsExportOptions,
+} from './exporters/github-pull-requests.js';
+export {
+    githubPullRequestsExportJob,
+    githubPullRequestsExportInputSchema,
+    githubPullRequestExportColumns,
+} from './jobs/github/pull-requests-export.js';
 export { githubLabelsJob } from './jobs/github/labels.js';
 export { githubPullRequestFilesJob } from './jobs/github/pull-request-files.js';
 export { githubPullRequestCommitsJob } from './jobs/github/pull-request-commits.js';
