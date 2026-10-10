@@ -249,12 +249,30 @@ export class GitHubClient {
     ): AsyncIterable<GitHubPage<T>> {
         let next: string | undefined = startUrl ?? url.href;
         const visited = new Set<string>();
+        const repositoryResource = /^repos\/[^/]+\/[^/]+(\/.*)?$/.exec(
+            url.pathname.slice(this.baseUrl.pathname.length)
+        );
+        let repositoryIdPath: string | undefined;
         while (next) {
             this.context.signal?.throwIfAborted();
             assertSameOrigin(new URL(next), this.baseUrl);
             const current = new URL(next);
-            if (current.pathname !== url.pathname)
-                throw new Error('GitHub pagination changed the requested resource');
+            if (current.pathname !== url.pathname) {
+                // GitHub Link headers use /repositories/{id}/... for named repositories.
+                const repositoryIdResource = current.pathname.startsWith(this.baseUrl.pathname)
+                    ? /^repositories\/[1-9]\d*(\/.*)?$/.exec(
+                          current.pathname.slice(this.baseUrl.pathname.length)
+                      )
+                    : null;
+                if (
+                    !repositoryResource ||
+                    !repositoryIdResource ||
+                    repositoryResource[1] !== repositoryIdResource[1] ||
+                    (repositoryIdPath && current.pathname !== repositoryIdPath)
+                )
+                    throw new Error('GitHub pagination changed the requested resource');
+                repositoryIdPath ??= current.pathname;
+            }
             for (const key of ['state', 'sort', 'direction', 'per_page']) {
                 if (current.searchParams.get(key) !== url.searchParams.get(key))
                     throw new Error(`GitHub pagination changed ${key}`);
